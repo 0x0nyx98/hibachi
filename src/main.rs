@@ -104,6 +104,65 @@ impl eframe::App for HibachiApp {
             });
         });
 
+        let area_list_editor = Modal::new(ctx, "arealist");
+        area_list_editor.show(|ui| {
+            ui.vertical_centered(|ui| {
+                ui.heading("Areas");
+            });
+
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for t in 0..4 {
+                    let rt = match t {
+                        0 => 1,
+                        1 => 2,
+                        2 => 0,
+                        n => n
+                    };
+
+                    ui.heading(match t {
+                        0 => "Ground Areas",
+                        1 => "Cave Areas",
+                        2 => "Water Areas",
+                        3 => "Castle Areas",
+                        _ => "uuuuuuhhhhhhhhhhhhhhhhhh???",
+                    });
+                    
+                    if self.areas[rt].len() == 0 {
+                        ui.horizontal(|ui| {
+                            ui.label("No areas!");
+                            if ui.button("Add Area").clicked() {
+                                self.areas[rt].push(Area::default());
+                            }
+                        });
+                    }else{
+                        for n in 0..self.areas[rt].len() {
+                            ui.horizontal(|ui| {
+                                ui.label(format!("{:#04x}", n));
+
+                                if ui.add_enabled(self.areas[rt].len() < 0x20, egui::Button::new("Add Above")).clicked() {
+                                    self.areas[rt].insert(n, Area::default());
+                                }
+
+                                if ui.add_enabled(self.areas[rt].len() < 0x20, egui::Button::new("Add Below")).clicked() {
+                                    self.areas[rt].insert(n + 1, Area::default());
+                                }
+
+                                if ui.add(egui::Button::new("Remove")).clicked() {
+                                    self.areas[rt].remove(n);
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+
+            ui.vertical_centered(|ui| {
+                if ui.button("Close").clicked() {
+                    area_list_editor.close();
+                }
+            });
+        });
+
         egui::TopBottomPanel::top(Id::new("topmenu")).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.add(egui::Button::image(egui::include_image!("../pics/open.png"))).clicked() {
@@ -144,6 +203,10 @@ impl eframe::App for HibachiApp {
             if self.is_rom_open() {
                 if ui.button("Edit World Headers").clicked() {
                     world_header_editor.open();
+                }
+
+                if ui.button("Add or Remove Areas").clicked() {
+                    area_list_editor.open();
                 }
             }else{
                 ui.heading("No Rom Loaded");
@@ -319,4 +382,10 @@ impl HibachiApp {
 
 struct Area {
 
+}
+
+impl Default for Area {
+    fn default() -> Self {
+        Self {}
+    }
 }
