@@ -20,6 +20,7 @@ fn main() -> eframe::Result {
 }
 
 struct HibachiApp {
+    rom_path: String,
     rom: Option<Box<[u8]>>,
     lasterr: String,
     errbox: Vec<Modal>, // terrible hack
@@ -33,6 +34,7 @@ struct HibachiApp {
 impl Default for HibachiApp {
     fn default() -> Self {
         Self {
+            rom_path: String::from(""),
             rom: None,
             lasterr: String::from("Task failed successfully!"),
             errbox: vec!(),
@@ -110,7 +112,7 @@ impl eframe::App for HibachiApp {
                 ui.heading("Areas");
             });
 
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::ScrollArea::vertical().max_height(640.0).show(ui, |ui| {
                 for t in 0..4 {
                     let rt = match t {
                         0 => 1,
@@ -167,10 +169,12 @@ impl eframe::App for HibachiApp {
             ui.horizontal(|ui| {
                 if ui.add(egui::Button::image(egui::include_image!("../pics/open.png"))).clicked() {
                     if let Some(path) = tinyfiledialogs::open_file_dialog("Open ROM", "smb1.nes", None) {
-                        match (fs::read(path)) {
+                        match (fs::read(&path)) {
                             Ok(v) => {
                                 self.rom = Some(v.into_boxed_slice());
                                 if self.validate_rom() {
+                                    self.rom_path = path.clone();
+
                                     if self.is_patched_organisation() {
                                         self.reload_levels();
                                     }else{
@@ -190,11 +194,22 @@ impl eframe::App for HibachiApp {
                 }
 
                 if ui.add_enabled(self.is_rom_open(), egui::Button::image(egui::include_image!("../pics/save.png"))).clicked() {
+                    self.err("unimplemented.");
 
+                    /*
+                    self.rewrite_levels();
+
+                    match fs::write(&self.rom_path, self.rom.clone().unwrap()) {
+                        Ok(_) => {},
+                        Err(_) => {
+                            self.err("Failed to save the file.");
+                        }
+                    }
+                    */
                 }
 
                 if ui.add_enabled(self.is_rom_open(), egui::Button::image(egui::include_image!("../pics/saveas.png"))).clicked() {
-
+                    self.err("unimplemented.");
                 }
             });
         });
