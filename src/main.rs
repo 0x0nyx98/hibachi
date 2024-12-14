@@ -209,7 +209,7 @@ impl HibachiApp {
             world_offs[i - 0x1CC4] = raw_rom[i] as usize;
         }
 
-        world_offs[8] = 0x1CF0 - 0x1CCC;
+        world_offs[8] = 36;
 
         let mut tile_offs: [usize; 5] = [0; 5];
 
