@@ -735,6 +735,25 @@ impl HibachiApp {
                     nes_color(i as u8),
                 );
             }
+
+            for i in 0..24 {
+                let n = (i % 12) + 2;
+                let k = (i / 12) + 6;
+                canvas.rect_filled(
+                    egui::Rect::from_two_pos([32.0 * n as f32, 32.0 * k as f32].into(), [32.0 * (n + 1) as f32, 32.0 * (k + 1) as f32].into()).translate(resp.rect.min.to_vec2()),
+                    egui::Rounding::ZERO,
+                    self.game_palette[&MarioColorPalette::Ground][match i / 3 {
+                        0 => &MarioColor::Vegetation,
+                        1 => &MarioColor::Brick,
+                        2 => &MarioColor::Cloud,
+                        3 => &MarioColor::Shiny,
+                        4 => &MarioColor::Mario,
+                        5 => &MarioColor::GreenEnemy,
+                        6 => &MarioColor::RedEnemy,
+                        _ => &MarioColor::BlackEnemy,
+                    }][i % 3],
+                );
+            }
             
             ui.allocate_exact_size(resp.rect.size(), Sense::focusable_noninteractive());
         });
