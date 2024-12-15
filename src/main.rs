@@ -1,6 +1,7 @@
+use core::f32;
 use std::{collections::HashMap, fs, hash::Hash, os::unix::raw};
 
-use eframe::egui::{self, Id};
+use eframe::egui::{self, Id, Sense, Vec2};
 use egui_modal::Modal;
 
 fn main() -> eframe::Result {
@@ -30,7 +31,7 @@ struct HibachiApp {
 
     world_editor_selected_world: usize,
 
-    game_graphics: HashMap<MarioColorPalette, HashMap<MarioGraphics, egui::load::SizedTexture>>,
+    game_graphics: HashMap<MarioGraphics, ViewportSprite>,
     game_palette: HashMap<MarioColorPalette, HashMap<MarioColor, [egui::Color32; 3]>>,
     game_skycolor: HashMap<MarioColorPalette, egui::Color32>
 }
@@ -230,28 +231,27 @@ impl eframe::App for HibachiApp {
             });
         });
 
-        egui::SidePanel::left("toolbox").min_width(200.0).show(ctx, |ui| {
-            if self.is_rom_open() {
-                if ui.button("Edit World Headers").clicked() {
-                    world_header_editor.open();
-                }
+        egui::SidePanel::left("toolbox").min_width(200.0).max_width(500.0).resizable(true).show(ctx, |ui| {
+            ui.vertical_centered_justified(|ui| {
+                if self.is_rom_open() {
+                    if ui.button("Edit World Headers").clicked() {
+                        world_header_editor.open();
+                    }
 
-                if ui.button("Add or Remove Areas").clicked() {
-                    area_list_editor.open();
+                    if ui.button("Add or Remove Areas").clicked() {
+                        area_list_editor.open();
+                    }
+                }else{
+                    ui.heading("No Rom Loaded");
                 }
-            }else{
-                ui.heading("No Rom Loaded");
-            }
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let position = ui.available_rect_before_wrap().min;
             egui::Frame::canvas(ui.style()).inner_margin(0.0).outer_margin(0.0).show(ui, |ui| {
-                ui.painter().rect_filled(
-                    egui::Rect::from_x_y_ranges(0.0..=(32.0*16.0*32.0), 0.0..=(14.0*32.0)).translate(position.to_vec2()),
-                    egui::Rounding::ZERO,
-                    egui::Color32::from_rgb(70, 120, 200),
-                );
+                if self.is_rom_open() {
+                    self.paint_area(ui);
+                }
             });
         });
     }
@@ -290,6 +290,9 @@ impl HibachiApp {
         // tile point low 0x1D3C
 
     fn reload_levels_unpatched(&mut self) {
+        self.levels = [vec!(), vec!(), vec!(), vec!(), vec!(), vec!(), vec!(), vec!()];
+        self.areas = [vec!(), vec!(), vec!(), vec!()];
+
         let raw_rom = self.rom.clone().unwrap();
 
         let mut world_offs: [usize; 9] = [0; 9];
@@ -704,6 +707,20 @@ impl HibachiApp {
 
         self.game_palette.insert(pal.clone(), p);
     }
+
+    fn paint_area(&self, ui: &mut egui::Ui) {
+        let position = ui.available_rect_before_wrap().min;
+        egui::ScrollArea::horizontal().hscroll(true).show(ui, |ui| {
+            let (resp, canvas) = ui.allocate_painter(Vec2::new(32.0*16.0*32.0, 14.0*32.0), Sense::click_and_drag());
+            canvas.rect_filled(
+                resp.rect,
+                egui::Rounding::ZERO,
+                egui::Color32::from_rgb(70, 120, 200),
+            );
+            
+            ui.allocate_exact_size(resp.rect.size(), Sense::focusable_noninteractive());
+        });
+    }
 }
 
 #[inline(always)]
@@ -1099,4 +1116,9 @@ enum MarioColorPalette {
     // gray uses castle
     Mushroom,
     Bowser
+}
+
+struct ViewportSprite {
+    slices: [egui::load::SizedTexture; 3],
+    palette: MarioColor
 }
