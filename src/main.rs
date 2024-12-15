@@ -1,6 +1,6 @@
 use std::fs;
 
-use eframe::{egui::{self, Id}, glow::PACK_COMPRESSED_BLOCK_DEPTH};
+use eframe::{egui::{self, Id}, glow::{Fence, PACK_COMPRESSED_BLOCK_DEPTH}};
 use egui_modal::Modal;
 
 fn main() -> eframe::Result {
@@ -133,7 +133,7 @@ impl eframe::App for HibachiApp {
                         ui.horizontal(|ui| {
                             ui.label("No areas!");
                             if ui.button("Add Area").clicked() {
-                                self.areas[rt].push(Area::default());
+                                self.areas[rt].push(Area::default_for_type(rt));
                             }
                         });
                     }else{
@@ -142,11 +142,11 @@ impl eframe::App for HibachiApp {
                                 ui.label(format!("{:#04x}", n));
 
                                 if ui.add_enabled(self.areas[rt].len() < 0x20, egui::Button::new("Add Above")).clicked() {
-                                    self.areas[rt].insert(n, Area::default());
+                                    self.areas[rt].insert(n, Area::default_for_type(rt));
                                 }
 
                                 if ui.add_enabled(self.areas[rt].len() < 0x20, egui::Button::new("Add Below")).clicked() {
-                                    self.areas[rt].insert(n + 1, Area::default());
+                                    self.areas[rt].insert(n + 1, Area::default_for_type(rt));
                                 }
 
                                 if ui.add(egui::Button::new("Remove")).clicked() {
@@ -389,18 +389,337 @@ impl HibachiApp {
 
     fn load_area_from_pointers(&mut self, atype: usize, tile_start: usize, spr_start: usize) {
         let raw_rom = self.rom.clone().unwrap();
-        let mut a = Area {};
+        let mut a = Area::default_for_type(atype);
+
+        let head_hi = raw_rom[tile_start];
+        let head_lo = raw_rom[tile_start + 1];
+
+        a.timer = match (head_hi >> 6) % 4 {
+            1 => AreaTimerSetting::T400,
+            2 => AreaTimerSetting::T300,
+            3 => AreaTimerSetting::T200,
+            _ => AreaTimerSetting::Sublevel
+        };
+
+        a.mario_height = match (head_hi >> 3) % 8 {
+            0 => AreaMarioStartHeightSetting::VeryHigh,
+            1 => AreaMarioStartHeightSetting::High,
+            2 => AreaMarioStartHeightSetting::Ground,
+            3 => AreaMarioStartHeightSetting::Midair,
+            _ => AreaMarioStartHeightSetting::Autowalk
+        };
+
+        a.bg = match head_hi % 8 {
+            0 => AreaBackdropSetting::Overworld,
+            1 => AreaBackdropSetting::Underwater,
+            2 => AreaBackdropSetting::GreatWall,
+            3 => AreaBackdropSetting::Seaside,
+            4 => AreaBackdropSetting::Nighttime,
+            5 => AreaBackdropSetting::SnowDay,
+            6 => AreaBackdropSetting::SnowNight,
+            _ => AreaBackdropSetting::Grayscale
+        };
+
+        a.special = match (head_lo >> 6) % 4 {
+            0 => AreaSpecialSetting::Ordinary,
+            1 => AreaSpecialSetting::Mushroom,
+            2 => AreaSpecialSetting::Cannon,
+            _ => AreaSpecialSetting::Sky
+        };
+
+        a.bg2 = match (head_lo >> 4) % 4 {
+            0 => AreaScenerySetting::Blank,
+            1 => AreaScenerySetting::Clouds,
+            2 => AreaScenerySetting::Hills,
+            _ => AreaScenerySetting::Fences
+        };
+
+        a.initial_tilepat = (head_lo % 16) as u8;
+
+        let mut t = tile_start + 2;
+
+        while (raw_rom[t] != 0xFD) {
+            todo!();
+        }
 
         self.areas[atype].push(a);
     }
 }
 
 struct Area {
-
+    timer: AreaTimerSetting,
+    mario_height: AreaMarioStartHeightSetting,
+    bg: AreaBackdropSetting,
+    special: AreaSpecialSetting,
+    bg2: AreaScenerySetting,
+    initial_tilepat: u8,
+    terrain: Vec<AreaTerrainObject>,
+    stuff: Vec<AreaSpriteObject>
 }
 
-impl Default for Area {
-    fn default() -> Self {
-        Self {}
+impl Area {
+    fn default_for_type(t: usize) -> Area {
+        match t {
+            0 => Area {
+                timer: AreaTimerSetting::T300,
+                mario_height: AreaMarioStartHeightSetting::VeryHigh,
+                bg: AreaBackdropSetting::Underwater,
+                special: AreaSpecialSetting::Ordinary,
+                bg2: AreaScenerySetting::Blank,
+                initial_tilepat: 1,
+                terrain: vec!(),
+                stuff: vec!()
+            },
+            1 => Area {
+                timer: AreaTimerSetting::T300,
+                mario_height: AreaMarioStartHeightSetting::Ground,
+                bg: AreaBackdropSetting::Overworld,
+                special: AreaSpecialSetting::Mushroom,
+                bg2: AreaScenerySetting::Hills,
+                initial_tilepat: 1,
+                terrain: vec!(),
+                stuff: vec!()
+            },
+            2 => Area {
+                timer: AreaTimerSetting::T300,
+                mario_height: AreaMarioStartHeightSetting::High,
+                bg: AreaBackdropSetting::Overworld,
+                special: AreaSpecialSetting::Cannon,
+                bg2: AreaScenerySetting::Blank,
+                initial_tilepat: 1,
+                terrain: vec!(),
+                stuff: vec!()
+            },
+            3 => Area {
+                timer: AreaTimerSetting::T300,
+                mario_height: AreaMarioStartHeightSetting::Midair,
+                bg: AreaBackdropSetting::Overworld,
+                special: AreaSpecialSetting::Ordinary,
+                bg2: AreaScenerySetting::Blank,
+                initial_tilepat: 1,
+                terrain: vec!(),
+                stuff: vec!()
+            },
+            _ => Area {
+                timer: AreaTimerSetting::Sublevel,
+                mario_height: AreaMarioStartHeightSetting::Ground,
+                bg: AreaBackdropSetting::Grayscale,
+                special: AreaSpecialSetting::Ordinary,
+                bg2: AreaScenerySetting::Blank,
+                initial_tilepat: 1,
+                terrain: vec!(),
+                stuff: vec!()
+            },
+        }
     }
+}
+
+enum AreaTimerSetting {
+    T200,    // 11
+    T300,    // 10
+    T400,    // 01
+    Sublevel // 00
+}
+
+enum AreaMarioStartHeightSetting {
+    VeryHigh, // used for water levels
+    High, // cave
+    Ground,
+    Midair, // castle
+    /*
+    Unused,
+    Unused2,
+    Unused3Autowalk,
+    */
+    Autowalk
+}
+
+enum AreaBackdropSetting {
+    Overworld,
+    Underwater,
+    GreatWall,
+    Seaside,
+    Nighttime,
+    SnowDay,
+    SnowNight,
+    Grayscale
+}
+
+enum AreaSpecialSetting {
+    Ordinary,
+    Mushroom,
+    Cannon,
+    Sky
+}
+
+enum AreaScenerySetting {
+    Blank,
+    Clouds,
+    Hills,
+    Fences
+}
+
+struct AreaTerrainObject {
+    x: usize,
+    y: u8,  // 0 <= y <= 11 (12..=15 are obj types)
+    variety: TerrainObjectType
+}
+
+enum TerrainObjectType {
+    RawHex(u8), // fallback / hacky stuff
+
+    SpecialPlat(u8), // 001 ...
+    BrickRow(u8),
+    BlockRow(u8),
+    CoinRow(u8),
+    BrickColumn(u8),
+    BlockColumn(u8), // ... 110
+
+    Pipe(bool, u8), // 111
+
+    PowerupQBlock,    // 000:0000 ...
+    CoinQBlock,
+    CoinHiddenBlock,
+    OneupHiddenBlock,
+    PowerupBrick,
+    VineBrick,
+    StarBrick,
+    LotsOfCoinsBrick,
+    OneupBrick,
+    HitBlock,
+    SidePipeExit,
+    Trampoline,
+    LPipe,
+    Flagpole,   // ... 000:1101
+
+    // height 12 types, from 000 to 111 (sized)
+
+    Hole(u8),
+    Pulley(u8),
+    Y7Bridge(u8),
+    Y8Bridge(u8),
+    Y10Bridge(u8),
+    WaterHole(u8),
+    Y3QBlocks(u8),
+    Y7QBlocks(u8),
+
+    // height 13 types , top bit unset
+    
+    // ScreenSkipCommand(u8) will be handled internally :)
+
+    // height 13 types , top bit set
+
+    // LPipe (duplicate?)
+    // Flagpole (duplicate?)
+
+    BridgeAx, // 000010...
+    BridgeChain,
+    BowserBridge,
+    WarpZoneCommand,
+    NoScrollCommand,
+    NoScroll2Command,
+    CheepCheepSpawnCommand,
+    BulletSpawnCommand,
+    NoSpawnCommand,
+    EndlessHallwayCommand,
+
+    // height 14 types , top bit unset
+
+    SceneryAndFloorPatternSwitch(u8, u8),
+
+    // height 14 types , top bit set
+
+    BackdropSwitchCommand(u8),
+
+    // height 15 types , 000 to 101 sized
+
+    LeftPulleyRope(u8),
+    RightPulleyRope(u8),
+    Fortress(u8),
+    BlockStaircase(u8),
+    ExitLPipe(u8),
+    UnusedVine(u8),
+}
+
+struct AreaSpriteObject {
+    variety: SpriteObjectType,
+    lategame: bool, // originally labeled this variable 'hard', quickly regretted that
+    x: usize,
+    y: u8 // 0 <= y <= 13
+}
+
+enum SpriteObjectType {
+    GreenKoopa,
+    StupidRedKoopa,
+    Buzzy,
+    RedKoopa,
+    ReallyStupidGreenKoopa,
+    HammerBro,
+    Goomba,
+    Blooper,
+    BulletBill,
+    YellowParatroopa,
+    SlowCheep,
+    FastCheep,
+    Podoboo,
+    Pirahna, // is this used?
+    JumpyGreenParatroopa,
+    VerticalRedParatroopa,
+    HorizontalGreenParatroopa,
+    Lakitu,
+    SpinyDontUse, // dont use! (do not use)
+
+    // 0x13 undefined
+
+    JumpingCheepsGenerator,
+    BowserFireGenerator,
+    FireworkGenerator, // again is this used???
+    BulletBillGenerator, // all my sources are saying these can also do cheeps . wtf does that mean
+
+    // 0x18-0x1A undefined
+
+    ClockwiseFireBar,
+    FastClockwiseFireBar,
+    CCWFireBar,
+    FastCCWFireBar,
+    BigClockwiseFireBar,
+
+    // 0x20-0x23 undefined
+
+    BalanceLift,
+    UpAndDownLift,
+    UpLift,
+    DownLift,
+    AcrossLift,
+    FallingLift,
+    RightLift,
+    ShortUpLift,
+    ShortDownLift,
+    Bowser,
+
+    // 0x2E - 0x33 undefined
+
+    WarpZone, // this is already a tile !!! i hate these devs. i guess ill find out how this is used once i start loading levels
+    Toad, // peach in w8
+
+    // 0x36 undefined
+
+    Y10_2Goombas,
+    Y10_3Goombas,
+    Y6_2Goombas,
+    Y6_3Goombas,
+    Y10_2Koopas,
+    Y10_3Koopas,
+    Y6_2Koopas,
+    Y6_3Koopas,
+
+    // 0x3F on undefined
+
+    // y14
+
+    WarpInfo(u8, u8, u8) // for enterable pipes: exit lev id, enterance world num, return screen num
+
+    // y15
+
+    // ScreenSkipCommand(u8),
 }
