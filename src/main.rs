@@ -729,6 +729,7 @@ impl HibachiApp {
             for i in 0..0x40 {
                 let n = i % 16;
                 let k = i / 16;
+                // random edit so i can commit again
                 canvas.rect_filled(
                     egui::Rect::from_two_pos([32.0 * n as f32, 32.0 * k as f32].into(), [32.0 * (n + 1) as f32, 32.0 * (k + 1) as f32].into()).translate(resp.rect.min.to_vec2()),
                     egui::Rounding::ZERO,
