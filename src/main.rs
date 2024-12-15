@@ -319,8 +319,8 @@ impl HibachiApp {
 
             'arload: while k < 0x22 {
                 self.load_area_from_pointers(n,
-                    ((raw_rom[0x1D5E + t] as usize) << 8) + (raw_rom[0x1D3C + t] as usize),
-                    ((raw_rom[0x1D16 + k] as usize) << 8) + (raw_rom[0x1CF4 + k] as usize)
+                    HibachiApp::rom_addr(((raw_rom[0x1D5E + t] as usize) << 8) + (raw_rom[0x1D3C + t] as usize)),
+                    HibachiApp::rom_addr(((raw_rom[0x1D16 + k] as usize) << 8) + (raw_rom[0x1CF4 + k] as usize))
                 );
 
                 k += 1;
@@ -355,7 +355,7 @@ impl HibachiApp {
     }
 
     #[inline(always)]
-    fn rom_addr(n: i32) -> i32 {
+    fn rom_addr(n: usize) -> usize {
         n - 32752
     }
 
@@ -437,13 +437,13 @@ impl HibachiApp {
         a.initial_tilepat = (head_lo % 16) as u8;
 
         let mut t = tile_start + 2;
-        let mut scrx = 0;
+        let mut scrx = 0usize;
 
         while (raw_rom[t] != 0xFD) {
             let pos = raw_rom[t];
             let data = raw_rom[t + 1];
 
-            if data > 127 { scrx += 1; }
+            if data > 127 { scrx += 16; }
 
             let x = (pos >> 4) % 16;
             let y = pos % 16;
@@ -507,7 +507,7 @@ impl HibachiApp {
             }
 
             if y == 13 && (dat_hi < 4) {
-                scrx = 16 * (((dat_hi % 2) << 4) + dat_lo);
+                scrx = 16 * (((dat_hi % 2) << 4) + dat_lo) as usize;
             }
 
             if y == 13 && (dat_hi > 3) {
@@ -572,18 +572,19 @@ impl HibachiApp {
         }
 
         let mut s = spr_start;
+        let mut scrx = 0usize;
 
         while (raw_rom[s] != 0xFF) {
             let pos = raw_rom[t];
             let data = raw_rom[t + 1];
 
-            if data > 127 { scrx += 1; }
+            if data > 127 { scrx += 16; }
 
             let x = (pos >> 4) % 16;
             let y = pos % 16;
 
             if y == 15 {
-                scrx = 16 * (data % 32);
+                scrx = 16 * (data % 32) as usize;
             }
 
             else if y == 14 {
@@ -648,7 +649,7 @@ impl HibachiApp {
                 a.stuff.push(AreaSpriteObject {
                     variety: objtype,
                     lategame: (data % 128) > 63,
-                    x: scrx as usize + x as usize,
+                    x: scrx + x as usize,
                     y: y
                 })
             }
