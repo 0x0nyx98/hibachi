@@ -1,5 +1,4 @@
-use core::f32;
-use std::{collections::HashMap, fs, hash::Hash, os::unix::raw};
+use std::{collections::HashMap, fs, hash::Hash};
 
 use eframe::egui::{self, Id, Sense, Vec2};
 use egui_modal::Modal;
@@ -675,6 +674,15 @@ impl HibachiApp {
         self.reload_palettes();
     }
 
+    fn reload_sprite(&mut self, g: MarioGraphics, p: MarioColor, patches: Vec<[usize; 3]>) {
+        self.game_graphics.insert(g,
+            ViewportSprite {
+                slices: todo!(),
+                palette: p,
+            }
+        );
+    }
+
     fn reload_palettes(&mut self) {
         self.reload_palette(MarioColorPalette::Water, 0x0CB4, 0x05DF);
         self.reload_palette(MarioColorPalette::Ground, 0x0CD8, 0x05E0);
@@ -1085,6 +1093,7 @@ enum SpriteObjectType {
     // ScreenSkipCommand(u8),
 }
 
+#[derive(PartialEq, Eq, Hash, Clone)]
 enum MarioGraphics {
 
 }
