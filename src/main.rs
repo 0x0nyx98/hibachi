@@ -1,4 +1,4 @@
-use std::fs;
+use std::{collections::HashMap, fs, hash::Hash, os::unix::raw};
 
 use eframe::egui::{self, Id};
 use egui_modal::Modal;
@@ -28,7 +28,11 @@ struct HibachiApp {
     levels: [Vec<[usize; 2]>; 8],
     areas: [Vec<Area>; 4],
 
-    world_editor_selected_world: usize
+    world_editor_selected_world: usize,
+
+    game_graphics: HashMap<MarioColorPalette, HashMap<MarioGraphics, egui::load::SizedTexture>>,
+    game_palette: HashMap<MarioColorPalette, HashMap<MarioColor, [egui::Color32; 3]>>,
+    game_skycolor: HashMap<MarioColorPalette, egui::Color32>
 }
 
 impl Default for HibachiApp {
@@ -40,7 +44,10 @@ impl Default for HibachiApp {
             errbox: vec!(),
             levels: [vec!(), vec!(), vec!(), vec!(), vec!(), vec!(), vec!(), vec!()],
             areas: [vec!(), vec!(), vec!(), vec!()],
-            world_editor_selected_world: 0
+            world_editor_selected_world: 0,
+            game_graphics: HashMap::new(),
+            game_palette: HashMap::new(),
+            game_skycolor: HashMap::new(),
         }
     }
 }
@@ -182,6 +189,8 @@ impl eframe::App for HibachiApp {
                                 if self.validate_rom() {
                                     self.rom_path = path.clone();
 
+                                    self.reload_graphics();
+
                                     if self.is_patched_organisation() {
                                         self.reload_levels();
                                     }else{
@@ -321,8 +330,8 @@ impl HibachiApp {
 
             'arload: while k < 0x22 {
                 self.load_area_from_pointers(n,
-                    HibachiApp::rom_addr(((raw_rom[0x1D5E + t] as usize) << 8) + (raw_rom[0x1D3C + t] as usize)),
-                    HibachiApp::rom_addr(((raw_rom[0x1D16 + k] as usize) << 8) + (raw_rom[0x1CF4 + k] as usize))
+                    rom_addr(((raw_rom[0x1D5E + t] as usize) << 8) + (raw_rom[0x1D3C + t] as usize)),
+                    rom_addr(((raw_rom[0x1D16 + k] as usize) << 8) + (raw_rom[0x1CF4 + k] as usize))
                 );
 
                 k += 1;
@@ -354,11 +363,6 @@ impl HibachiApp {
 
     fn rewrite_levels(&mut self) {
         // max capacity 2EEA - 1D80 !!!!!!!!!!
-    }
-
-    #[inline(always)]
-    fn rom_addr(n: usize) -> usize {
-        n - 32752
     }
 
     fn is_patched_organisation(&self) -> bool {
@@ -661,6 +665,120 @@ impl HibachiApp {
 
         self.areas[atype].push(a);
     }
+
+    fn reload_graphics(&mut self) {
+        self.game_graphics = HashMap::new();
+
+        self.reload_palettes();
+    }
+
+    fn reload_palettes(&mut self) {
+        self.reload_palette(MarioColorPalette::Water, 0x0CB4, 0x05DF);
+        self.reload_palette(MarioColorPalette::Ground, 0x0CD8, 0x05E0);
+        self.reload_palette(MarioColorPalette::Cave, 0x0CFC, 0x05E1);
+        self.reload_palette(MarioColorPalette::Castle, 0x0D20, 0x05E2);
+
+        // temporary:
+        self.game_palette.insert(MarioColorPalette::Night, self.game_palette.get(&MarioColorPalette::Ground).unwrap().clone());
+        self.game_palette.insert(MarioColorPalette::SnowDay, self.game_palette.get(&MarioColorPalette::Ground).unwrap().clone());
+        self.game_palette.insert(MarioColorPalette::SnowNight, self.game_palette.get(&MarioColorPalette::Ground).unwrap().clone());
+        self.game_palette.insert(MarioColorPalette::Mushroom, self.game_palette.get(&MarioColorPalette::Ground).unwrap().clone());
+        self.game_palette.insert(MarioColorPalette::Bowser, self.game_palette.get(&MarioColorPalette::Castle).unwrap().clone());
+    }
+
+    fn reload_palette(&mut self, pal: MarioColorPalette, offset: usize, sky_offset: usize) {
+        let raw_rom = self.rom.clone().unwrap();
+
+        self.game_skycolor.insert(pal.clone(), nes_color(raw_rom[sky_offset]));
+
+        let mut p = HashMap::new();
+
+        p.insert(MarioColor::Vegetation, [nes_color(raw_rom[offset + 4]), nes_color(raw_rom[offset + 5]), nes_color(raw_rom[offset + 6])]);
+        p.insert(MarioColor::Brick, [nes_color(raw_rom[offset + 8]), nes_color(raw_rom[offset + 9]), nes_color(raw_rom[offset + 10])]);
+        p.insert(MarioColor::Cloud, [nes_color(raw_rom[offset + 12]), nes_color(raw_rom[offset + 13]), nes_color(raw_rom[offset + 14])]);
+        p.insert(MarioColor::Shiny, [nes_color(raw_rom[offset + 16]), nes_color(raw_rom[offset + 17]), nes_color(raw_rom[offset + 18])]);
+        p.insert(MarioColor::Mario, [nes_color(raw_rom[offset + 20]), nes_color(raw_rom[offset + 21]), nes_color(raw_rom[offset + 22])]);
+        p.insert(MarioColor::GreenEnemy, [nes_color(raw_rom[offset + 24]), nes_color(raw_rom[offset + 25]), nes_color(raw_rom[offset + 26])]);
+        p.insert(MarioColor::RedEnemy, [nes_color(raw_rom[offset + 28]), nes_color(raw_rom[offset + 29]), nes_color(raw_rom[offset + 30])]);
+        p.insert(MarioColor::BlackEnemy, [nes_color(raw_rom[offset + 32]), nes_color(raw_rom[offset + 33]), nes_color(raw_rom[offset + 34])]);
+
+        self.game_palette.insert(pal.clone(), p);
+    }
+}
+
+#[inline(always)]
+fn rom_addr(n: usize) -> usize {
+    n - 32752
+}
+
+fn nes_color(n: u8) -> egui::Color32 {
+    match n % 0x40 {
+        0x00 => egui::Color32::from_rgb(0x62, 0x62, 0x62),
+        0x01 => egui::Color32::from_rgb(0x00, 0x2c, 0x7c),
+        0x02 => egui::Color32::from_rgb(0x11, 0x15, 0x9c),
+        0x03 => egui::Color32::from_rgb(0x36, 0x03, 0x9c),
+        0x04 => egui::Color32::from_rgb(0x55, 0x00, 0x7c),
+        0x05 => egui::Color32::from_rgb(0x67, 0x00, 0x44),
+        0x06 => egui::Color32::from_rgb(0x67, 0x07, 0x03),
+        0x07 => egui::Color32::from_rgb(0x55, 0x1c, 0x00),
+        0x08 => egui::Color32::from_rgb(0x36, 0x32, 0x00),
+        0x09 => egui::Color32::from_rgb(0x11, 0x44, 0x00),
+        0x0A => egui::Color32::from_rgb(0x00, 0x4e, 0x00),
+        0x0B => egui::Color32::from_rgb(0x00, 0x4c, 0x03),
+        0x0C => egui::Color32::from_rgb(0x00, 0x40, 0x44),
+        0x0D => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x0E => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x0F => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x10 => egui::Color32::from_rgb(0xab, 0xab, 0xab),
+        0x11 => egui::Color32::from_rgb(0x12, 0x60, 0xce),
+        0x12 => egui::Color32::from_rgb(0x3d, 0x42, 0xfa),
+        0x13 => egui::Color32::from_rgb(0x6e, 0x29, 0xfa),
+        0x14 => egui::Color32::from_rgb(0x99, 0x1c, 0xce),
+        0x15 => egui::Color32::from_rgb(0xb1, 0x1e, 0x81),
+        0x16 => egui::Color32::from_rgb(0xb1, 0x2f, 0x29),
+        0x17 => egui::Color32::from_rgb(0x99, 0x4a, 0x00),
+        0x18 => egui::Color32::from_rgb(0x6e, 0x69, 0x00),
+        0x19 => egui::Color32::from_rgb(0x3d, 0x82, 0x00),
+        0x1A => egui::Color32::from_rgb(0x12, 0x8f, 0x00),
+        0x1B => egui::Color32::from_rgb(0x00, 0x8d, 0x29),
+        0x1C => egui::Color32::from_rgb(0x00, 0x7c, 0x81),
+        0x1D => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x1E => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x1F => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x20 => egui::Color32::from_rgb(0xff, 0xff, 0xff),
+        0x21 => egui::Color32::from_rgb(0x60, 0xb2, 0xff),
+        0x22 => egui::Color32::from_rgb(0x8d, 0x92, 0xff),
+        0x23 => egui::Color32::from_rgb(0xc0, 0x78, 0xff),
+        0x24 => egui::Color32::from_rgb(0xec, 0x6a, 0xff),
+        0x25 => egui::Color32::from_rgb(0xff, 0x6d, 0xd4),
+        0x26 => egui::Color32::from_rgb(0xff, 0x7f, 0x79),
+        0x27 => egui::Color32::from_rgb(0xec, 0x9b, 0x2a),
+        0x28 => egui::Color32::from_rgb(0xc0, 0xba, 0x00),
+        0x29 => egui::Color32::from_rgb(0x8d, 0xd4, 0x00),
+        0x2A => egui::Color32::from_rgb(0x60, 0xe2, 0x2a),
+        0x2B => egui::Color32::from_rgb(0x47, 0xe0, 0x79),
+        0x2C => egui::Color32::from_rgb(0x47, 0xce, 0xd4),
+        0x2D => egui::Color32::from_rgb(0x4e, 0x4e, 0x4e),
+        0x2E => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x2F => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x30 => egui::Color32::from_rgb(0xff, 0xff, 0xff),
+        0x31 => egui::Color32::from_rgb(0xbf, 0xe0, 0xff),
+        0x32 => egui::Color32::from_rgb(0xd1, 0xd3, 0xff),
+        0x33 => egui::Color32::from_rgb(0xe6, 0xc9, 0xff),
+        0x34 => egui::Color32::from_rgb(0xf7, 0xc3, 0xff),
+        0x35 => egui::Color32::from_rgb(0xff, 0xc4, 0xee),
+        0x36 => egui::Color32::from_rgb(0xff, 0xcb, 0xc9),
+        0x37 => egui::Color32::from_rgb(0xf7, 0xd7, 0xa9),
+        0x38 => egui::Color32::from_rgb(0xe6, 0xe3, 0x97),
+        0x39 => egui::Color32::from_rgb(0xd1, 0xee, 0x97),
+        0x3A => egui::Color32::from_rgb(0xbf, 0xf3, 0xa9),
+        0x3B => egui::Color32::from_rgb(0xb5, 0xf2, 0xc9),
+        0x3C => egui::Color32::from_rgb(0xb5, 0xeb, 0xee),
+        0x3D => egui::Color32::from_rgb(0xb8, 0xb8, 0xb8),
+        0x3E => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        0x3F => egui::Color32::from_rgb(0x00, 0x00, 0x00),
+        _ => egui::Color32::from_rgb(0xFF, 0x00, 0x00)
+    }
 }
 
 struct Area {
@@ -948,4 +1066,37 @@ enum SpriteObjectType {
     // y15
 
     // ScreenSkipCommand(u8),
+}
+
+enum MarioGraphics {
+
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+enum MarioColor {
+    Vegetation,
+    Brick,
+    Cloud,
+    Shiny,
+
+    Mario,
+    GreenEnemy,
+    RedEnemy,
+    BlackEnemy
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+enum MarioColorPalette {
+    Ground,
+    Cave,
+    Water,
+    Castle,
+
+    //variants:
+    Night,
+    SnowDay,
+    SnowNight,
+    // gray uses castle
+    Mushroom,
+    Bowser
 }
