@@ -1,6 +1,6 @@
 use std::fs;
 
-use eframe::{egui::{self, load::TextureLoadResult, CollapsingResponse, Id}, glow::{Fence, PACK_COMPRESSED_BLOCK_DEPTH}};
+use eframe::egui::{self, Id};
 use egui_modal::Modal;
 
 fn main() -> eframe::Result {
@@ -69,9 +69,16 @@ impl eframe::App for HibachiApp {
                     }
                 });
 
+                let mut ln = 1;
+
                 for n in 0..self.levels[self.world_editor_selected_world].len() {
                     ui.horizontal(|ui| {
-                        ui.label(format!("Level #{}", n + 1));
+                        if self.areas[self.levels[self.world_editor_selected_world][n][0]][self.levels[self.world_editor_selected_world][n][1]].mario_height == AreaMarioStartHeightSetting::Autowalk {
+                            ui.label("Cutscene");
+                        }else{
+                            ui.label(format!("Level #{}", ln));
+                            ln += 1;
+                        }
 
                         egui::ComboBox::new(6969 + n, "Area Type").selected_text(
                             match self.levels[self.world_editor_selected_world][n][0] {
@@ -214,7 +221,7 @@ impl eframe::App for HibachiApp {
             });
         });
 
-        egui::SidePanel::left("toolbox").exact_width(200.0).show(ctx, |ui| {
+        egui::SidePanel::left("toolbox").min_width(200.0).show(ctx, |ui| {
             if self.is_rom_open() {
                 if ui.button("Edit World Headers").clicked() {
                     world_header_editor.open();
@@ -229,19 +236,14 @@ impl eframe::App for HibachiApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            /* ui.heading("My egui Application");
-            ui.horizontal(|ui| {
-                let name_label = ui.label("Your name: ");
-                ui.text_edit_singleline(&mut self.name)
-                    .labelled_by(name_label.id);
+            let position = ui.available_rect_before_wrap().min;
+            egui::Frame::canvas(ui.style()).inner_margin(0.0).outer_margin(0.0).show(ui, |ui| {
+                ui.painter().rect_filled(
+                    egui::Rect::from_x_y_ranges(0.0..=(32.0*16.0*32.0), 0.0..=(14.0*32.0)).translate(position.to_vec2()),
+                    egui::Rounding::ZERO,
+                    egui::Color32::from_rgb(70, 120, 200),
+                );
             });
-            ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
-            if ui.button("Increment").clicked() {
-                self.age += 1;
-            }
-            ui.label(format!("Hello '{}', age {}", self.name, self.age));
-
-            ui.image(egui::include_image!("../../../crates/egui/assets/ferris.png")); */
         });
     }
 }
@@ -729,6 +731,7 @@ impl Area {
     }
 }
 
+#[derive(PartialEq)]
 enum AreaTimerSetting {
     T200,    // 11
     T300,    // 10
@@ -736,6 +739,7 @@ enum AreaTimerSetting {
     Sublevel // 00
 }
 
+#[derive(PartialEq)]
 enum AreaMarioStartHeightSetting {
     VeryHigh, // used for water levels
     High, // cave
@@ -749,6 +753,7 @@ enum AreaMarioStartHeightSetting {
     Autowalk
 }
 
+#[derive(PartialEq)]
 enum AreaBackdropSetting {
     Overworld,
     Underwater,
@@ -760,6 +765,7 @@ enum AreaBackdropSetting {
     Grayscale
 }
 
+#[derive(PartialEq)]
 enum AreaSpecialSetting {
     Ordinary,
     Mushroom,
@@ -767,6 +773,7 @@ enum AreaSpecialSetting {
     Sky
 }
 
+#[derive(PartialEq)]
 enum AreaScenerySetting {
     Blank,
     Clouds,
@@ -780,6 +787,7 @@ struct AreaTerrainObject {
     variety: TerrainObjectType
 }
 
+#[derive(PartialEq)]
 enum TerrainObjectType {
     RawHex(u8), // fallback / hacky stuff
 
@@ -863,6 +871,7 @@ struct AreaSpriteObject {
     y: u8 // 0 <= y <= 13
 }
 
+#[derive(PartialEq)]
 enum SpriteObjectType {
     RawHex(u8), // backup or hacky
 
