@@ -1,6 +1,6 @@
 use std::fs;
 
-use eframe::{egui::{self, Id}, glow::{Fence, PACK_COMPRESSED_BLOCK_DEPTH}};
+use eframe::{egui::{self, load::TextureLoadResult, CollapsingResponse, Id}, glow::{Fence, PACK_COMPRESSED_BLOCK_DEPTH}};
 use egui_modal::Modal;
 
 fn main() -> eframe::Result {
@@ -437,9 +437,223 @@ impl HibachiApp {
         a.initial_tilepat = (head_lo % 16) as u8;
 
         let mut t = tile_start + 2;
+        let mut scrx = 0;
 
         while (raw_rom[t] != 0xFD) {
-            todo!();
+            let pos = raw_rom[t];
+            let data = raw_rom[t + 1];
+
+            if data > 127 { scrx += 1; }
+
+            let x = (pos >> 4) % 16;
+            let y = pos % 16;
+
+            let dat_hi = (data >> 4) % 8;
+            let dat_lo = data % 16;
+
+            if y < 12 {
+                let result_obj = match dat_hi {
+                    1 => TerrainObjectType::SpecialPlat(dat_lo),
+                    2 => TerrainObjectType::BrickRow(dat_lo),
+                    3 => TerrainObjectType::BlockRow(dat_lo),
+                    4 => TerrainObjectType::CoinRow(dat_lo),
+                    5 => TerrainObjectType::BrickColumn(dat_lo),
+                    6 => TerrainObjectType::BlockColumn(dat_lo),
+                    7 => TerrainObjectType::Pipe(dat_lo > 7, dat_lo % 8),
+
+                    _ => match dat_lo {
+                        0 => TerrainObjectType::PowerupQBlock,
+                        1 => TerrainObjectType::CoinQBlock,
+                        2 => TerrainObjectType::CoinHiddenBlock,
+                        3 => TerrainObjectType::OneupHiddenBlock,
+                        4 => TerrainObjectType::PowerupBrick,
+                        5 => TerrainObjectType::VineBrick,
+                        6 => TerrainObjectType::StarBrick,
+                        7 => TerrainObjectType::LotsOfCoinsBrick,
+                        8 => TerrainObjectType::OneupBrick,
+                        9 => TerrainObjectType::HitBlock,
+                        10 => TerrainObjectType::SidePipeExit,
+                        11 => TerrainObjectType::Trampoline,
+                        12 => TerrainObjectType::LPipe,
+                        13 => TerrainObjectType::Flagpole,
+                        _ => TerrainObjectType::RawHex(data)
+                    }
+                };
+
+                a.terrain.push(AreaTerrainObject {
+                    variety: result_obj,
+                    x: scrx as usize + x as usize,
+                    y: y
+                });
+            }
+
+            if y == 12 {
+                let result_obj = match dat_hi {
+                    0 => TerrainObjectType::Hole(dat_lo),
+                    1 => TerrainObjectType::Pulley(dat_lo),
+                    2 => TerrainObjectType::Y7Bridge(dat_lo),
+                    3 => TerrainObjectType::Y8Bridge(dat_lo),
+                    4 => TerrainObjectType::Y10Bridge(dat_lo),
+                    5 => TerrainObjectType::WaterHole(dat_lo),
+                    6 => TerrainObjectType::Y3QBlocks(dat_lo),
+                    _ => TerrainObjectType::Y7QBlocks(dat_lo)
+                };
+
+                a.terrain.push(AreaTerrainObject {
+                    variety: result_obj,
+                    x: scrx as usize + x as usize,
+                    y: 0
+                });
+            }
+
+            if y == 13 && (dat_hi < 4) {
+                scrx = 16 * (((dat_hi % 2) << 4) + dat_lo);
+            }
+
+            if y == 13 && (dat_hi > 3) {
+                let result_obj = match ((dat_hi % 2) << 4) + dat_lo {
+                    0 => TerrainObjectType::LPipe,
+                    1 => TerrainObjectType::Flagpole,
+                    2 => TerrainObjectType::BridgeAx,
+                    3 => TerrainObjectType::BridgeChain,
+                    4 => TerrainObjectType::BowserBridge,
+                    5 => TerrainObjectType::WarpZoneCommand,
+                    6 => TerrainObjectType::NoScrollCommand,
+                    7 => TerrainObjectType::NoScroll2Command,
+                    8 => TerrainObjectType::CheepCheepSpawnCommand,
+                    9 => TerrainObjectType::BulletSpawnCommand,
+                    10 => TerrainObjectType::NoSpawnCommand,
+                    11 => TerrainObjectType::EndlessHallwayCommand,
+                    _ =>  TerrainObjectType::RawHex(data)
+                };
+
+                a.terrain.push(AreaTerrainObject {
+                    variety: result_obj,
+                    x: scrx as usize + x as usize,
+                    y: 0
+                });
+            }
+
+            if y == 14 && (dat_hi < 4)  {
+                a.terrain.push(AreaTerrainObject {
+                    variety: TerrainObjectType::SceneryAndFloorPatternSwitch(dat_hi % 4, dat_lo),
+                    x: scrx as usize + x as usize,
+                    y: 0
+                });
+            }
+
+            if y == 14 && (dat_hi > 3)  {
+                a.terrain.push(AreaTerrainObject {
+                    variety: TerrainObjectType::BackdropSwitchCommand(dat_lo % 8),
+                    x: scrx as usize + x as usize,
+                    y: 0
+                });
+            }
+
+            if y == 15 {
+                let result_obj = match dat_hi {
+                    0 => TerrainObjectType::LeftPulleyRope(dat_lo),
+                    1 => TerrainObjectType::RightPulleyRope(dat_lo),
+                    2 => TerrainObjectType::Fortress(dat_lo),
+                    3 => TerrainObjectType::BlockStaircase(dat_lo),
+                    4 => TerrainObjectType::ExitLPipe(dat_lo),
+                    5 => TerrainObjectType::UnusedVine(dat_lo),
+                    _ => TerrainObjectType::RawHex(data)
+                };
+
+                a.terrain.push(AreaTerrainObject {
+                    variety: result_obj,
+                    x: scrx as usize + x as usize,
+                    y: 0
+                });
+            }
+
+            t += 2;
+        }
+
+        let mut s = spr_start;
+
+        while (raw_rom[s] != 0xFF) {
+            let pos = raw_rom[t];
+            let data = raw_rom[t + 1];
+
+            if data > 127 { scrx += 1; }
+
+            let x = (pos >> 4) % 16;
+            let y = pos % 16;
+
+            if y == 15 {
+                scrx = 16 * (data % 32);
+            }
+
+            else if y == 14 {
+                // warp info handling is todo
+                s += 1;
+            }
+
+            else {
+                let objtype = match data % 64 {
+                    0 => SpriteObjectType::GreenKoopa,
+                    1 => SpriteObjectType::StupidRedKoopa,
+                    2 => SpriteObjectType::Buzzy,
+                    3 => SpriteObjectType::RedKoopa,
+                    4 => SpriteObjectType::ReallyStupidGreenKoopa,
+                    5 => SpriteObjectType::HammerBro,
+                    6 => SpriteObjectType::Goomba,
+                    7 => SpriteObjectType::Blooper,
+                    8 => SpriteObjectType::BulletBill,
+                    9 => SpriteObjectType::YellowParatroopa,
+                    10 => SpriteObjectType::SlowCheep,
+                    11 => SpriteObjectType::FastCheep,
+                    12 => SpriteObjectType::Podoboo,
+                    13 => SpriteObjectType::Pirahna,
+                    14 => SpriteObjectType::JumpyGreenParatroopa,
+                    15 => SpriteObjectType::VerticalRedParatroopa,
+                    16 => SpriteObjectType::HorizontalGreenParatroopa,
+                    17 => SpriteObjectType::Lakitu,
+                    18 => SpriteObjectType::SpinyDontUse,
+                    20 => SpriteObjectType::JumpingCheepsGenerator,
+                    21 => SpriteObjectType::BowserFireGenerator,
+                    22 => SpriteObjectType::FireworkGenerator,
+                    23 => SpriteObjectType::BulletBillGenerator,
+                    27 => SpriteObjectType::ClockwiseFireBar,
+                    28 => SpriteObjectType::FastClockwiseFireBar,
+                    29 => SpriteObjectType::CCWFireBar,
+                    30 => SpriteObjectType::FastCCWFireBar,
+                    31 => SpriteObjectType::BigClockwiseFireBar,
+                    36 => SpriteObjectType::BalanceLift,
+                    37 => SpriteObjectType::UpAndDownLift,
+                    38 => SpriteObjectType::UpLift,
+                    39 => SpriteObjectType::DownLift,
+                    40 => SpriteObjectType::AcrossLift,
+                    41 => SpriteObjectType::FallingLift,
+                    42 => SpriteObjectType::RightLift,
+                    43 => SpriteObjectType::ShortUpLift,
+                    44 => SpriteObjectType::ShortDownLift,
+                    45 => SpriteObjectType::Bowser,
+                    52 => SpriteObjectType::WarpZone,
+                    53 => SpriteObjectType::Toad,
+                    55 => SpriteObjectType::Y10_2Goombas,
+                    56 => SpriteObjectType::Y10_3Goombas,
+                    57 => SpriteObjectType::Y6_2Goombas,
+                    58 => SpriteObjectType::Y6_3Goombas,
+                    59 => SpriteObjectType::Y10_2Koopas,
+                    60 => SpriteObjectType::Y10_3Koopas,
+                    61 => SpriteObjectType::Y6_2Koopas,
+                    62 => SpriteObjectType::Y6_3Koopas,
+
+                    _ => SpriteObjectType::RawHex(data % 64)
+                };
+
+                a.stuff.push(AreaSpriteObject {
+                    variety: objtype,
+                    lategame: (data % 128) > 63,
+                    x: scrx as usize + x as usize,
+                    y: y
+                })
+            }
+
+            s += 2;
         }
 
         self.areas[atype].push(a);
@@ -625,7 +839,7 @@ enum TerrainObjectType {
 
     // height 14 types , top bit unset
 
-    SceneryAndFloorPatternSwitch(u8, u8),
+    SceneryAndFloorPatternSwitch(u8, u8), // scenery , floor pat
 
     // height 14 types , top bit set
 
@@ -649,6 +863,8 @@ struct AreaSpriteObject {
 }
 
 enum SpriteObjectType {
+    RawHex(u8), // backup or hacky
+
     GreenKoopa,
     StupidRedKoopa,
     Buzzy,
