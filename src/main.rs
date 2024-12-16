@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs, hash::Hash};
 
-use eframe::egui::{self, Id, Sense, Vec2};
+use eframe::egui::{self, load::SizedTexture, Color32, Id, Sense, TextureOptions, Vec2};
 use egui_modal::Modal;
 
 fn main() -> eframe::Result {
@@ -189,7 +189,7 @@ impl eframe::App for HibachiApp {
                                 if self.validate_rom() {
                                     self.rom_path = path.clone();
 
-                                    self.reload_graphics();
+                                    self.reload_graphics(ctx);
 
                                     if self.is_patched_organisation() {
                                         self.reload_levels();
@@ -668,16 +668,83 @@ impl HibachiApp {
         self.areas[atype].push(a);
     }
 
-    fn reload_graphics(&mut self) {
+    fn reload_graphics(&mut self, ctx: &egui::Context) {
         self.game_graphics = HashMap::new();
 
         self.reload_palettes();
+        self.reload_sprite(ctx, MarioGraphics::MarioStart, MarioColor::Mario, vec!(
+            [0,0,0x32],
+            [8,0,0x33],
+            [0,8,0x34],
+            [8,8,0x35],
+        ));
+
+        self.reload_sprite(ctx, MarioGraphics::TerrainRocky, MarioColor::Brick, vec!(
+            [0,0,0xB4],
+            [8,0,0xB5],
+            [0,8,0xB6],
+            [8,8,0xB7],
+        ));
+
+        // gfx start 8010
     }
 
-    fn reload_sprite(&mut self, g: MarioGraphics, p: MarioColor, patches: Vec<[usize; 3]>) {
+    fn reload_sprite(&mut self, ctx: &egui::Context, g: MarioGraphics, p: MarioColor, patches: Vec<[isize; 3]>) {
+        let raw_rom = self.rom.clone().unwrap();
+
+        let mut min_x = isize::MAX;
+        let mut min_y = isize::MAX;
+        let mut max_x = isize::MIN;
+        let mut max_y = isize::MIN;
+
+        for p in patches.iter() {
+            if p[0] < min_x { min_x = p[0]; }
+            if p[0] + 8 > max_x { max_x = p[0] + 8; }
+            if p[1] < min_y { min_y = p[1]; }
+            if p[1] + 8 > max_y { max_y = p[1] + 8; }
+        }
+
+        let mut i1 = egui::ColorImage::new([(max_x - min_x) as usize, (max_y - min_y) as usize], Color32::TRANSPARENT);
+        let mut i2 = egui::ColorImage::new([(max_x - min_x) as usize, (max_y - min_y) as usize], Color32::TRANSPARENT);
+        let mut i3 = egui::ColorImage::new([(max_x - min_x) as usize, (max_y - min_y) as usize], Color32::TRANSPARENT);
+
+        for p in patches.iter() {
+            let x = p[0] - min_x;
+            let y = p[1] - min_y;
+
+            let mut xx = 0;
+            let mut yy = 0;
+
+            let saddr =(0x8010 + 16 * p[2]) as usize;
+
+            for b in 0..8 {
+                for s in 0..8 {
+                    let px = ((y + yy) * (max_x - min_x) + (x + xx)) as usize;
+
+                    let shift = 7 - s;
+                    let hi = (raw_rom[saddr + b + 8] >> shift) % 2;
+                    let lo = (raw_rom[saddr + b] >> shift) % 2;
+                    let d = 2 * hi + lo;
+
+                    if d == 1 { i1.pixels[px] = Color32::WHITE; }
+                    if d == 2 { i2.pixels[px] = Color32::WHITE; }
+                    if d == 3 { i3.pixels[px] = Color32::WHITE; }
+
+                    xx += 1;
+                    if xx == 8 { xx = 0; yy += 1; }
+                }
+            }
+        }
+
+        let c1 = ctx.load_texture("texture" /* :skull */, i1, TextureOptions::NEAREST);
+        let c2 = ctx.load_texture("texture" /* :skull */, i2, TextureOptions::NEAREST);
+        let c3 = ctx.load_texture("texture" /* :skull */, i3, TextureOptions::NEAREST);
+
         self.game_graphics.insert(g,
             ViewportSprite {
-                slices: todo!(),
+                slices: [c1, c2, c3],
+                offset: [min_x, min_y],
+                size: [(max_x - min_x) as usize, (max_y - min_y) as usize],
                 palette: p,
             }
         );
@@ -754,9 +821,35 @@ impl HibachiApp {
                     }][i % 3],
                 );
             }
+
+            self.paint_sprite(&canvas, resp.rect.min.to_vec2(), 80, 11 * 32, MarioGraphics::MarioStart, MarioColorPalette::Ground);
             
+            for xn in 0..16*32 {
+                self.paint_sprite(&canvas, resp.rect.min.to_vec2(), xn * 32, 12 * 32, MarioGraphics::TerrainRocky, MarioColorPalette::Ground);
+                self.paint_sprite(&canvas, resp.rect.min.to_vec2(), xn * 32, 13 * 32, MarioGraphics::TerrainRocky, MarioColorPalette::Ground);
+            }
+
             ui.allocate_exact_size(resp.rect.size(), Sense::focusable_noninteractive());
         });
+    }
+
+    fn paint_sprite(&self, pntr: &egui::Painter, o: Vec2, x: isize, y: isize, spr: MarioGraphics, pal: MarioColorPalette) {
+        let sprdata = &self.game_graphics[&spr];
+
+        pntr.image(egui::TextureId::from(&sprdata.slices[0]), egui::Rect::from_points(&[
+            egui::pos2(x as f32, y as f32),
+            egui::pos2((x + 2 * sprdata.size[0] as isize) as f32, (y + 2 * sprdata.size[1] as isize) as f32)
+        ]).translate(o), egui::Rect{min: egui::pos2(0.0, 0.0), max: egui::pos2(1.0, 1.0)}, self.game_palette[&pal][&sprdata.palette][0]);
+
+        pntr.image(egui::TextureId::from(&sprdata.slices[1]), egui::Rect::from_points(&[
+            egui::pos2(x as f32, y as f32),
+            egui::pos2((x + 2 * sprdata.size[0] as isize) as f32, (y + 2 * sprdata.size[1] as isize) as f32)
+        ]).translate(o), egui::Rect{min: egui::pos2(0.0, 0.0), max: egui::pos2(1.0, 1.0)}, self.game_palette[&pal][&sprdata.palette][1]);
+
+        pntr.image(egui::TextureId::from(&sprdata.slices[2]), egui::Rect::from_points(&[
+            egui::pos2(x as f32, y as f32),
+            egui::pos2((x + 2 * sprdata.size[0] as isize) as f32, (y + 2 * sprdata.size[1] as isize) as f32)
+        ]).translate(o), egui::Rect{min: egui::pos2(0.0, 0.0), max: egui::pos2(1.0, 1.0)}, self.game_palette[&pal][&sprdata.palette][2]);
     }
 }
 
@@ -1124,7 +1217,11 @@ enum SpriteObjectType {
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 enum MarioGraphics {
+    MarioStart,
 
+    TerrainRocky,
+    TerrainSearock,
+    TerrainCastleBrick
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -1157,6 +1254,8 @@ enum MarioColorPalette {
 }
 
 struct ViewportSprite {
-    slices: [egui::load::SizedTexture; 3],
+    slices: [egui::TextureHandle; 3],
+    offset: [isize; 2],
+    size: [usize; 2],
     palette: MarioColor
 }
