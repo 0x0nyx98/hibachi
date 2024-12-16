@@ -32,7 +32,9 @@ struct HibachiApp {
 
     game_graphics: HashMap<MarioGraphics, ViewportSprite>,
     game_palette: HashMap<MarioColorPalette, HashMap<MarioColor, [egui::Color32; 3]>>,
-    game_skycolor: HashMap<MarioColorPalette, egui::Color32>
+    game_skycolor: HashMap<MarioColorPalette, egui::Color32>,
+
+    current_editing_area: Option<[usize; 2]>
 }
 
 impl Default for HibachiApp {
@@ -48,6 +50,7 @@ impl Default for HibachiApp {
             game_graphics: HashMap::new(),
             game_palette: HashMap::new(),
             game_skycolor: HashMap::new(),
+            current_editing_area: None
         }
     }
 }
@@ -179,6 +182,56 @@ impl eframe::App for HibachiApp {
             });
         });
 
+        let area_edit_picker = Modal::new(ctx, "areapicker");
+        area_edit_picker.show(|ui| {
+            ui.vertical_centered(|ui| {
+                ui.heading("Areas");
+            });
+
+            egui::ScrollArea::vertical().max_height(640.0).show(ui, |ui| {
+                for t in 0..4 {
+                    let rt = match t {
+                        0 => 1,
+                        1 => 2,
+                        2 => 0,
+                        n => n
+                    };
+
+                    ui.heading(match t {
+                        0 => "Ground Areas",
+                        1 => "Cave Areas",
+                        2 => "Water Areas",
+                        3 => "Castle Areas",
+                        _ => "uuuuuuhhhhhhhhhhhhhhhhhh???",
+                    });
+                    
+                    if self.areas[rt].len() == 0 {
+                        ui.horizontal(|ui| {
+                            ui.label("No areas!");
+                        });
+                    }else{
+                        for n in 0..self.areas[rt].len() {
+                            ui.horizontal(|ui| {
+                                ui.label(format!("{:#04x}", n));
+
+                                if ui.add(egui::Button::new("Edit")).clicked() {
+                                    self.current_editing_area = Some([rt, n]);
+                                    area_edit_picker.close();
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+
+            ui.vertical_centered(|ui| {
+                if ui.button("Close").clicked() {
+                    self.current_editing_area = None;
+                    area_edit_picker.close();
+                }
+            });
+        });
+
         egui::TopBottomPanel::top(Id::new("topmenu")).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.add(egui::Button::image(egui::include_image!("../pics/open.png"))).clicked() {
@@ -186,10 +239,13 @@ impl eframe::App for HibachiApp {
                         match (fs::read(&path)) {
                             Ok(v) => {
                                 self.rom = Some(v.into_boxed_slice());
+
                                 if self.validate_rom() {
                                     self.rom_path = path.clone();
 
                                     self.reload_graphics(ctx);
+
+                                    self.current_editing_area = None;
 
                                     if self.is_patched_organisation() {
                                         self.reload_levels();
@@ -240,6 +296,12 @@ impl eframe::App for HibachiApp {
                     if ui.button("Add or Remove Areas").clicked() {
                         area_list_editor.open();
                     }
+
+                    ui.separator();
+
+                    if ui.button("Modify Areas").clicked() {
+                        area_edit_picker.open();
+                    }
                 }else{
                     ui.heading("No Rom Loaded");
                 }
@@ -248,8 +310,8 @@ impl eframe::App for HibachiApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::Frame::canvas(ui.style()).inner_margin(0.0).outer_margin(0.0).show(ui, |ui| {
-                if self.is_rom_open() {
-                    self.paint_area(ui);
+                if let Some(a) = self.current_editing_area {
+                    self.area_editor(ui, a);
                 }
             });
         });
@@ -680,13 +742,11 @@ impl HibachiApp {
         ));
 
         self.reload_sprite(ctx, MarioGraphics::TerrainRocky, MarioColor::Brick, vec!(
-            [0,0,0xB4],
-            [8,0,0xB5],
-            [0,8,0xB6],
-            [8,8,0xB7],
+            [0,0,0x1B4],
+            [8,0,0x1B5],
+            [0,8,0x1B6],
+            [8,8,0x1B7],
         ));
-
-        // gfx start 8010
     }
 
     fn reload_sprite(&mut self, ctx: &egui::Context, g: MarioGraphics, p: MarioColor, patches: Vec<[isize; 3]>) {
@@ -783,50 +843,29 @@ impl HibachiApp {
         self.game_palette.insert(pal.clone(), p);
     }
 
-    fn paint_area(&self, ui: &mut egui::Ui) {
-        let position = ui.available_rect_before_wrap().min;
+    fn area_editor(&mut self, ui: &mut egui::Ui, arid: [usize; 2]) {
+        let area = &mut self.areas[arid[0]][arid[1]];
+
+        let apal = match arid[0] {
+            0 => MarioColorPalette::Water,
+            1 => MarioColorPalette::Ground,
+            2 => MarioColorPalette::Cave,
+            _ => MarioColorPalette::Castle
+        };
+
         egui::ScrollArea::horizontal().hscroll(true).show(ui, |ui| {
             let (resp, canvas) = ui.allocate_painter(Vec2::new(32.0*16.0*32.0, 14.0*32.0), Sense::click_and_drag());
             canvas.rect_filled(
                 resp.rect,
                 egui::Rounding::ZERO,
-                egui::Color32::from_rgb(70, 120, 200),
+                self.game_skycolor[&apal],
             );
 
-            for i in 0..0x40 {
-                let n = i % 16;
-                let k = i / 16;
-                canvas.rect_filled(
-                    egui::Rect::from_two_pos([32.0 * n as f32, 32.0 * k as f32].into(), [32.0 * (n + 1) as f32, 32.0 * (k + 1) as f32].into()).translate(resp.rect.min.to_vec2()),
-                    egui::Rounding::ZERO,
-                    nes_color(i as u8),
-                );
-            }
-
-            for i in 0..24 {
-                let n = (i % 12) + 2;
-                let k = (i / 12) + 6;
-                canvas.rect_filled(
-                    egui::Rect::from_two_pos([32.0 * n as f32, 32.0 * k as f32].into(), [32.0 * (n + 1) as f32, 32.0 * (k + 1) as f32].into()).translate(resp.rect.min.to_vec2()),
-                    egui::Rounding::ZERO,
-                    self.game_palette[&MarioColorPalette::Ground][match i / 3 {
-                        0 => &MarioColor::Vegetation,
-                        1 => &MarioColor::Brick,
-                        2 => &MarioColor::Cloud,
-                        3 => &MarioColor::Shiny,
-                        4 => &MarioColor::Mario,
-                        5 => &MarioColor::GreenEnemy,
-                        6 => &MarioColor::RedEnemy,
-                        _ => &MarioColor::BlackEnemy,
-                    }][i % 3],
-                );
-            }
-
-            self.paint_sprite(&canvas, resp.rect.min.to_vec2(), 80, 11 * 32, MarioGraphics::MarioStart, MarioColorPalette::Ground);
+            self.paint_sprite(&canvas, resp.rect.min.to_vec2(), 80, 11 * 32, MarioGraphics::MarioStart, apal);
             
             for xn in 0..16*32 {
-                self.paint_sprite(&canvas, resp.rect.min.to_vec2(), xn * 32, 12 * 32, MarioGraphics::TerrainRocky, MarioColorPalette::Ground);
-                self.paint_sprite(&canvas, resp.rect.min.to_vec2(), xn * 32, 13 * 32, MarioGraphics::TerrainRocky, MarioColorPalette::Ground);
+                self.paint_sprite(&canvas, resp.rect.min.to_vec2(), xn * 32, 12 * 32, MarioGraphics::TerrainRocky, apal);
+                self.paint_sprite(&canvas, resp.rect.min.to_vec2(), xn * 32, 13 * 32, MarioGraphics::TerrainRocky, apal);
             }
 
             ui.allocate_exact_size(resp.rect.size(), Sense::focusable_noninteractive());
@@ -1237,7 +1276,7 @@ enum MarioColor {
     BlackEnemy
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 enum MarioColorPalette {
     Ground,
     Cave,
