@@ -33,6 +33,7 @@ struct HibachiApp {
     game_graphics: HashMap<MarioGraphics, ViewportSprite>,
     game_palette: HashMap<MarioColorPalette, HashMap<MarioColor, [egui::Color32; 3]>>,
     game_skycolor: HashMap<MarioColorPalette, egui::Color32>,
+    game_font: HashMap<char, ViewportSprite>,
 
     current_editing_area: Option<[usize; 2]>
 }
@@ -50,6 +51,7 @@ impl Default for HibachiApp {
             game_graphics: HashMap::new(),
             game_palette: HashMap::new(),
             game_skycolor: HashMap::new(),
+            game_font: HashMap::new(),
             current_editing_area: None
         }
     }
@@ -747,6 +749,15 @@ impl HibachiApp {
             [0,8,0x1B6],
             [8,8,0x1B7],
         ));
+
+        self.reload_sprite(ctx, MarioGraphics::TerrainRocky, MarioColor::Brick, vec!(
+            [0,0,0x1B4],
+            [8,0,0x1B5],
+            [0,8,0x1B6],
+            [8,8,0x1B7],
+        ));
+
+        self.reload_font(ctx);
     }
 
     fn reload_sprite(&mut self, ctx: &egui::Context, g: MarioGraphics, p: MarioColor, patches: Vec<[isize; 3]>) {
@@ -810,6 +821,55 @@ impl HibachiApp {
         );
     }
 
+    fn reload_font(&mut self, ctx: &egui::Context) {
+        let raw_rom = self.rom.clone().unwrap();
+
+        let mut bn = 0x10A;
+
+        for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
+            let mut i: egui::ColorImage = egui::ColorImage::new([8, 8], Color32::TRANSPARENT);
+
+            let x = 0;
+            let y = 0;
+
+            let mut xx = 0;
+            let mut yy = 0;
+
+            let saddr =(0x8010 + 16 * bn) as usize;
+
+            for b in 0..8 {
+                for s in 0..8 {
+                    let px = ((y + yy) * 8 + (x + xx)) as usize;
+
+                    let shift = 7 - s;
+                    let hi = (raw_rom[saddr + b + 8] >> shift) % 2;
+                    let lo = (raw_rom[saddr + b] >> shift) % 2;
+                    let d = 2 * hi + lo;
+
+                    if d != 0 { i.pixels[px] = Color32::WHITE; }
+
+                    xx += 1;
+                    if xx == 8 { xx = 0; yy += 1; }
+                }
+            }
+            
+            let c1 = ctx.load_texture("fontLetter", i.clone(), TextureOptions::NEAREST);
+            let c2 = ctx.load_texture("fontLetter", i.clone(), TextureOptions::NEAREST);
+            let c3 = ctx.load_texture("fontLetter", i, TextureOptions::NEAREST);
+    
+            self.game_font.insert(c,
+                ViewportSprite {
+                    slices: [c1, c2, c3],
+                    offset: [0, 0],
+                    size: [8, 8],
+                    palette: MarioColor::BlackEnemy,
+                }
+            );
+
+            bn += 1;
+        }
+    }
+
     fn reload_palettes(&mut self) {
         self.reload_palette(MarioColorPalette::Water, 0x0CB4, 0x05DF);
         self.reload_palette(MarioColorPalette::Ground, 0x0CD8, 0x05E0);
@@ -862,6 +922,7 @@ impl HibachiApp {
             );
 
             self.paint_sprite(&canvas, resp.rect.min.to_vec2(), 80, 11 * 32, MarioGraphics::MarioStart, apal);
+            self.paint_tag(&canvas, resp.rect.min.to_vec2(), 112, 11 * 32, "Entrance", apal);
             
             for xn in 0..16*32 {
                 self.paint_sprite(&canvas, resp.rect.min.to_vec2(), xn * 32, 12 * 32, MarioGraphics::TerrainRocky, apal);
@@ -889,6 +950,47 @@ impl HibachiApp {
             egui::pos2(x as f32, y as f32),
             egui::pos2((x + 2 * sprdata.size[0] as isize) as f32, (y + 2 * sprdata.size[1] as isize) as f32)
         ]).translate(o), egui::Rect{min: egui::pos2(0.0, 0.0), max: egui::pos2(1.0, 1.0)}, self.game_palette[&pal][&sprdata.palette][2]);
+    }
+
+    fn paint_silhouette(&self, pntr: &egui::Painter, o: Vec2, x: isize, y: isize, spr: MarioGraphics, pal: MarioColorPalette) {
+        let sprdata = &self.game_graphics[&spr];
+
+        pntr.image(egui::TextureId::from(&sprdata.slices[0]), egui::Rect::from_points(&[
+            egui::pos2(x as f32, y as f32),
+            egui::pos2((x + 2 * sprdata.size[0] as isize) as f32, (y + 2 * sprdata.size[1] as isize) as f32)
+        ]).translate(o), egui::Rect{min: egui::pos2(0.0, 0.0), max: egui::pos2(1.0, 1.0)}, self.game_palette[&pal][&sprdata.palette][0]);
+
+        pntr.image(egui::TextureId::from(&sprdata.slices[1]), egui::Rect::from_points(&[
+            egui::pos2(x as f32, y as f32),
+            egui::pos2((x + 2 * sprdata.size[0] as isize) as f32, (y + 2 * sprdata.size[1] as isize) as f32)
+        ]).translate(o), egui::Rect{min: egui::pos2(0.0, 0.0), max: egui::pos2(1.0, 1.0)}, self.game_palette[&pal][&sprdata.palette][0]);
+
+        pntr.image(egui::TextureId::from(&sprdata.slices[2]), egui::Rect::from_points(&[
+            egui::pos2(x as f32, y as f32),
+            egui::pos2((x + 2 * sprdata.size[0] as isize) as f32, (y + 2 * sprdata.size[1] as isize) as f32)
+        ]).translate(o), egui::Rect{min: egui::pos2(0.0, 0.0), max: egui::pos2(1.0, 1.0)}, self.game_palette[&pal][&sprdata.palette][0]);
+    }
+
+    fn paint_tag(&self, pntr: &egui::Painter, o: Vec2, x: isize, y: isize, txt: &str, pal: MarioColorPalette) {
+        let mut i = 0;
+
+        pntr.rect_filled(
+            egui::Rect::from_points(&[
+                egui::pos2((x) as f32, y as f32),
+                egui::pos2((x + 16 * (txt.len() + 1) as isize) as f32, (y + 16 as isize) as f32)
+            ]).translate(o),
+            egui::Rounding::ZERO,
+            self.game_palette[&pal][&MarioColor::BlackEnemy][2],
+        );
+        
+        for c in txt.to_uppercase().chars() {
+            pntr.image(egui::TextureId::from(&(self.game_font)[&c].slices[0]), egui::Rect::from_points(&[
+                egui::pos2((x + 16 * i) as f32, y as f32),
+                egui::pos2((x + 16 * (i + 1)) as f32, (y + 16 as isize) as f32)
+            ]).translate(o), egui::Rect{min: egui::pos2(0.0, 0.0), max: egui::pos2(1.0, 1.0)}, self.game_palette[&pal][&MarioColor::BlackEnemy][1]);
+    
+            i += 1;
+        }
     }
 }
 
