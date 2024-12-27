@@ -581,9 +581,9 @@ impl HibachiApp {
     fn reload_font(&mut self, ctx: &egui::Context) {
         let raw_rom = self.rom.clone().unwrap();
 
-        let mut bn = 0x10A;
+        let mut bn = 0x100;
 
-        for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
+        for c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
             let mut i: egui::ColorImage = egui::ColorImage::new([8, 8], Color32::TRANSPARENT);
 
             let x = 0;

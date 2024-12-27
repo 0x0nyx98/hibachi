@@ -346,7 +346,7 @@ impl HibachiApp {
             );
 
             self.paint_sprite(&canvas, resp.rect.min.to_vec2(), 80, 11 * 32, MarioGraphics::MarioStart, apal);
-            self.paint_tag(&canvas, resp.rect.min.to_vec2(), 112, 11 * 32, "Entrance", apal);
+            self.paint_tag(&canvas, resp.rect.min.to_vec2(), 112, 11 * 32, "Entrance to", format!("Area {}", arid[1]).as_str(), apal);
             
             for xn in 0..16*32 {
                 self.paint_sprite(&canvas, resp.rect.min.to_vec2(), xn * 32, 12 * 32, MarioGraphics::TerrainRocky, apal);
